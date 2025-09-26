@@ -144,6 +144,15 @@ macro_rules! wrap_fixed_bytes {
             }
         }
 
+        impl $crate::private::TryFrom<$crate::private::Vec<u8>> for $name {
+            type Error = $crate::private::core::array::TryFromSliceError;
+
+            #[inline]
+            fn try_from(value: $crate::private::Vec<u8>) -> Result<Self, Self::Error> {
+                <Self as $crate::private::TryFrom<&[u8]>>::try_from(value.as_slice())
+            }
+        }
+
         impl $crate::private::AsRef<[u8; $n]> for $name {
             #[inline]
             fn as_ref(&self) -> &[u8; $n] {
