@@ -141,9 +141,7 @@ pub(super) fn expand(cx: &mut ExpCtxt<'_>, contract: &ItemContract) -> Result<To
             item_tokens.extend(cx.expand_item(&item)?);
         }
     }
-    cx.attrs = prev_cx_attrs;
 
-    let enum_expander = CallLikeExpander { cx, contract_name: name.clone(), extra_methods };
     // Remove any `Default` derives.
     let mut enum_attrs = item_attrs;
     for attr in &mut enum_attrs {
@@ -166,14 +164,7 @@ pub(super) fn expand(cx: &mut ExpCtxt<'_>, contract: &ItemContract) -> Result<To
         attr.meta = parse_quote! { derive(#(#derives),*) };
     }
 
-    let functions_enum = (!functions.is_empty()).then(|| {
-        let mut attrs = enum_attrs.clone();
-        let doc_str = format!("Container for all the [`{name}`](self) function calls.");
-        attrs.push(parse_quote!(#[doc = #doc_str]));
-        attrs.push(parse_quote!(#[derive(Clone)]));
-        enum_expander.expand(ToExpand::Functions(&functions), attrs)
-    });
-
+    let enum_expander = CallLikeExpander { cx, contract_name: name.clone(), extra_methods };
     let errors_enum = (!errors.is_empty()).then(|| {
         let mut attrs = enum_attrs.clone();
         let doc_str = format!("Container for all the [`{name}`](self) custom errors.");
@@ -183,11 +174,23 @@ pub(super) fn expand(cx: &mut ExpCtxt<'_>, contract: &ItemContract) -> Result<To
     });
 
     let events_enum = (!events.is_empty()).then(|| {
-        let mut attrs = enum_attrs;
+        let mut attrs = enum_attrs.clone();
         let doc_str = format!("Container for all the [`{name}`](self) events.");
         attrs.push(parse_quote!(#[doc = #doc_str]));
         attrs.push(parse_quote!(#[derive(Clone)]));
         enum_expander.expand(ToExpand::Events(&events), attrs)
+    });
+
+    // Do not propagate contract-level derives to the functions enum.
+    cx.attrs = prev_cx_attrs;
+
+    let functions_enum = (!functions.is_empty()).then(|| {
+        let mut attrs = enum_attrs;
+        let doc_str = format!("Container for all the [`{name}`](self) function calls.");
+        attrs.push(parse_quote!(#[doc = #doc_str]));
+        attrs.push(parse_quote!(#[derive(Clone)]));
+        let enum_expander = CallLikeExpander { cx, contract_name: name.clone(), extra_methods };
+        enum_expander.expand(ToExpand::Functions(&functions), attrs)
     });
 
     let mod_descr_doc = (docs && docs_str(&mod_attrs).trim().is_empty())
@@ -414,7 +417,6 @@ pub(super) fn expand(cx: &mut ExpCtxt<'_>, contract: &ItemContract) -> Result<To
             }
 
             /// Instantiation and getters/setters.
-            #[automatically_derived]
             impl #generic_p_n #name<P, N> {
                 #[doc = #new_fn_doc]
                 #[inline]
@@ -458,7 +460,6 @@ pub(super) fn expand(cx: &mut ExpCtxt<'_>, contract: &ItemContract) -> Result<To
             }
 
             /// Function calls.
-            #[automatically_derived]
             impl #generic_p_n #name<P, N> {
                 /// Creates a new call builder using this contract instance's provider and address.
                 ///
@@ -474,7 +475,6 @@ pub(super) fn expand(cx: &mut ExpCtxt<'_>, contract: &ItemContract) -> Result<To
             }
 
             /// Event filters.
-            #[automatically_derived]
             impl #generic_p_n #name<P, N> {
                 /// Creates a new event filter using this contract instance's provider and address.
                 ///
@@ -917,7 +917,6 @@ impl CallLikeExpander<'_> {
                 )*
             }
 
-            #[automatically_derived]
             impl #name {
                 /// All the selectors of this enum.
                 ///
@@ -958,7 +957,6 @@ impl CallLikeExpander<'_> {
             let methods = variants.iter().zip(types).map(generate_variant_methods);
             tokens.extend(conversions);
             tokens.extend(quote! {
-                #[automatically_derived]
                 impl #name {
                     #(#methods)*
                 }
